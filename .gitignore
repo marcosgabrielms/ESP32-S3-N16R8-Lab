@@ -1,0 +1,27 @@
+# --- Ignorar arquivos de Build do PlatformIO em qualquer subpasta ---
+**/.pio/
+**/.pioenvs/
+**/.piolibdeps/
+
+# --- Ignorar configurações de usuário do VS Code (opcional, mas recomendado) ---
+**/.vscode/
+**/*.code-workspace
+
+# --- Ignorar arquivos compilados e binários ---
+**/*.bin
+**/*.elf
+**/*.hex
+**/*.map
+
+# --- Ignorar arquivos de sistema ---
+.DS_Store
+Thumbs.db
+
+# --- Manter arquivos importantes ---
+!platformio.ini
+!src/
+!include/
+!lib/
+!data/
+!docs/
+!README.md
