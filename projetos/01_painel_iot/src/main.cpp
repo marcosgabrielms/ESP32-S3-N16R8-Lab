@@ -1,0 +1,167 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Adafruit_NeoPixel.h>
+
+const char* ssid = "Nome da sua rede";
+const char* password = "Sua senha";
+
+#define PIN_RGB 48
+#define NUM_PIXELS 1
+#define  PIN_BUZZER 4
+
+Adafruit_NeoPixel pixels (NUM_PIXELS, PIN_RGB, NEO_RGB + NEO_KHZ800);
+WebServer server(80);
+
+bool ledLigado = false;
+uint8_t corR = 0, corG = 255, corB = 0;
+
+void aplicarCorLed(uint8_t r, uint8_t g, uint8_t b) {
+  pixels.setPixelColor(0, pixels.Color(r, g, b));
+  pixels.show();
+}
+
+void acenderLed() {
+  ledLigado = true;
+  aplicarCorLed(corR, corG, corB);
+  Serial.println("LED ligado");
+}
+
+void apagarLed() {
+  ledLigado = false;
+  aplicarCorLed(0, 0, 0);
+  Serial.println("LED desligado");
+}
+
+void mudarCorLed(uint8_t r, uint8_t g, uint8_t b) {
+  corR = r;
+  corG =g;
+  corB = b;
+  if (ledLigado) {
+    aplicarCorLed(corR, corG, corB);
+  }
+  Serial.printf("Cor alterada para: R:%d G:%d B:%d", r , g, b );
+}
+
+void acionarBuzzer(int frequencia, int duracaoMS) {
+  Serial.println("Buzzer acionado");
+  tone(PIN_BUZZER, frequencia, duracaoMS);
+}
+
+void extrairRGBdoHex(String hex, uint8_t &r, uint8_t &g, uint8_t &b) {
+  if (hex.startsWith("#")) hex.remove(0, 1);
+  long numCor = strtol(hex.c_str(), NULL, 16);
+  r = (numCor >> 16) & 0xFF;
+  g = (numCor >> 8) & 0xFF;
+  b = numCor & 0xFF;
+}
+
+// HTML da página
+String getHTML() {
+  // Transforma o RGB atual de volta para Hexadecimal 
+  char hexCorAtual[8];
+  sprintf(hexCorAtual, "#%02x%02x%02x", corR, corG, corB);
+
+  String html = "<!DOCTYPE html><html lang=\"pt-BR\"><head>";
+  html += "<meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+  html += "<title>Painel ESP32-S3</title>";
+  html += "<style>";
+  html += "body { font-family: sans-serif; text-align: center; background-color: #2c3e50; color: #fff; margin-top: 30px; }";
+  html += ".painel { background: #34495e; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }";
+  html += ".btn { padding: 15px 30px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; color: white; margin: 10px; transition: 0.2s; text-decoration: none; display: inline-block; }";
+  html += ".btn-on { background-color: #27ae60; } .btn-off { background-color: #e74c3c; } .btn-buzzer { background-color: #f39c12; }";
+  html += "input[type='color'] { width: 60px; height: 40px; border: none; cursor: pointer; background: none; }";
+  html += "</style></head><body>";
+  
+  html += "<h1>Painel de Controle IoT</h1>";
+  html += "<div class=\"painel\">";
+  
+  // Controle de Ligar/Desligar
+  html += "<h2>LED RGB</h2>";
+  if (ledLigado) {
+    html += "<p>Status: <strong>LIGADO</strong></p>";
+    html += "<a href=\"/led/off\"><button class=\"btn btn-off\">Desligar</button></a>";
+  } else {
+    html += "<p>Status: <strong>DESLIGADO</strong></p>";
+    html += "<a href=\"/led/on\"><button class=\"btn btn-on\">Ligar</button></a>";
+  }
+
+  // Seletor de Cor (Formulário simples)
+  html += "<h3>Mudar Cor</h3>";
+  html += "<form action=\"/led/cor\" method=\"GET\">";
+  html += "<input type=\"color\" name=\"c\" value=\"" + String(hexCorAtual) + "\">";
+  html += "<br><button type=\"submit\" class=\"btn\" style=\"background:#2980b9; margin-top:10px;\">Aplicar Cor</button>";
+  html += "</form>";
+
+  // Controle do Buzzer
+  html += "<hr style=\"border-color:#7f8c8d; margin: 20px 0;\">";
+  html += "<h2>Buzzer</h2>";
+  html += "<a href=\"/buzzer/tocar\"><button class=\"btn btn-buzzer\">Tocar Alarme</button></a>";
+  
+  html += "</div></body></html>";
+  return html;
+}
+
+// Rotas
+void rotaPrincipal() { server.send(200, "text/html", getHTML()); }
+
+void rotaLigar() { acenderLed(); server.sendHeader("Location", "/"); server.send(303); }
+
+void rotaDesligar() { apagarLed(); server.sendHeader("Location", "/"); server.send(303); }
+
+void rotaMudarCor() {
+  if (server.hasArg("c")) {
+    uint8_t r, g, b;
+    extrairRGBdoHex(server.arg("c"), r, g, b);
+    mudarCorLed(r, g, b);
+  }
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void rotaTocarBuzzer() {
+  acionarBuzzer(1000, 500); // Toca 1000Hz por 500ms
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  // Inicia Pinos
+  pinMode(PIN_BUZZER, OUTPUT);
+  pixels.begin();
+  pixels.setBrightness(100);
+  apagarLed();
+
+  Serial.println("\nConectando ao Wi-Fi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    aplicarCorLed(0, 0, 50); // Pisca azul enquanto conecta
+    delay(200);
+    aplicarCorLed(0, 0, 0);
+    delay(200);
+    Serial.print(".");
+  }
+
+  apagarLed();
+  Serial.println("\nWi-Fi Conectado!");
+  Serial.print("Acesse: http://");
+  Serial.println(WiFi.localIP());
+
+  // Registra as rotas mapeando para as funções correspondentes
+  server.on("/", rotaPrincipal);
+  server.on("/led/on", rotaLigar);
+  server.on("/led/off", rotaDesligar);
+  server.on("/led/cor", rotaMudarCor);
+  server.on("/buzzer/tocar", rotaTocarBuzzer);
+
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+  delay(2);
+}
